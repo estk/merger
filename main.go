@@ -1,8 +1,8 @@
 package main
 
 // Todo:
+// - Refactor into separate packages
 // - Use Reggy to load avro schemas.
-// - Use avro to pass data.
 
 import (
 	"log"
@@ -12,12 +12,13 @@ import (
 	pb "merger/mergerpb"
 
 	context "golang.org/x/net/context"
+	"google.golang.org/grpc"
 )
 
 // Test main
 func main() {
-	s := NewServer(nil)
-	c := NewClient(s)
+	// s := NewServer(nil)
+	// c := NewClient(s)
 
 	// Test 1
 	// t1 := c.trackPayload([]Trace{}, "partial1")
@@ -26,11 +27,11 @@ func main() {
 	// time.Sleep(time.Second)
 
 	// Test 2
-	t1a := c.trackPayload([]Trace{}, "partial1a")
-	t1b := c.trackPayload([]Trace{}, "partial1b")
-	t2 := c.trackPayload([]Trace{t1a, t1b}, "partial2")
-	c.trackImpression([]Trace{t2}, "impression")
-	time.Sleep(time.Second)
+	// t1a := c.trackPayload([]Trace{}, "partial1a")
+	// t1b := c.trackPayload([]Trace{}, "partial1b")
+	// t2 := c.trackPayload([]Trace{t1a, t1b}, "partial2")
+	// c.trackImpression([]Trace{t2}, "impression")
+	// time.Sleep(time.Second)
 }
 
 // ======
@@ -38,11 +39,6 @@ func main() {
 // ======
 
 type dumpable = []byte
-
-type Trace struct {
-	id     string
-	traces []Trace
-}
 
 type PartialEvent struct {
 	traces []*pb.Trace
@@ -65,7 +61,7 @@ type ServerConfig struct {
 type Server struct {
 	ServerConfig
 	eventBuffer    partialMap
-	completeEvents []completeEvent
+	completeEvents []CompleteEvent
 }
 
 type partialEventEntry struct {
@@ -84,7 +80,7 @@ func NewServer(sc *ServerConfig) *Server {
 	s := &Server{
 		*sc,
 		make(partialMap),
-		[]completeEvent{},
+		[]CompleteEvent{},
 	}
 
 	go func() {
@@ -104,26 +100,26 @@ func cleanBuffer(b partialMap) {
 	}
 }
 
-type completeEvent struct {
+type CompleteEvent struct {
 	trace pb.Trace
 	datas []dumpable
 }
 
 func (s *Server) PartialEvents(ctx context.Context, er *pb.EventRequest) (*pb.Empty, error) {
 	for _, dw := range er.Payload {
-		s.acceptPartial(*dw.Trace, dw.Data)
+		s.processPartial(*dw.Trace, dw.Data)
 	}
 	return &pb.Empty{}, nil
 }
 
 func (s *Server) CompleteEvents(ctx context.Context, er *pb.EventRequest) (*pb.Empty, error) {
 	for _, dw := range er.Payload {
-		s.acceptPartial(*dw.Trace, dw.Data)
+		s.processComplete(*dw.Trace, dw.Data)
 	}
 	return &pb.Empty{}, nil
 }
 
-func (s *Server) acceptPartial(trace pb.Trace, data []byte) {
+func (s *Server) processPartial(trace pb.Trace, data []byte) {
 	s.eventBuffer[trace.Id] = partialEventEntry{
 		ts:      time.Now(),
 		partial: PartialEvent{trace.Traces, data},
@@ -131,20 +127,18 @@ func (s *Server) acceptPartial(trace pb.Trace, data []byte) {
 	log.Println("Stored Partial:", trace)
 }
 
-func (s *Server) acceptImpression(p Payload) {
-	event := s.completePartials(p)
+func (s *Server) processComplete(trace pb.Trace, data []byte) {
+	event := s.completePartials(trace, data)
 	s.completeEvents = append(s.completeEvents, event)
-	log.Println("Completed Impression: ", event)
-	log.Println("Datas: ", event.datas)
+	log.Println("Completed Impression: ", trace)
 }
 
-func (s *Server) completePartials(payload Payload) completeEvent {
-	traces := payload.partial.traces
-	trace := pb.Trace{payload.id, traces}
-	datas := s.collectDatas(traces)
-	datas = append(datas, payload.partial.data)
-	return completeEvent{trace, datas}
+func (s *Server) completePartials(trace pb.Trace, data []byte) CompleteEvent {
+	datas := s.collectDatas(trace.Traces)
+	datas = append(datas, data)
+	return CompleteEvent{trace, datas}
 }
+
 func (s *Server) collectDatas(traces []*pb.Trace) []dumpable {
 	datas := []dumpable{}
 	for _, t := range traces {
@@ -164,40 +158,52 @@ func (s *Server) collectDatas(traces []*pb.Trace) []dumpable {
 // ======
 
 type ClientConfig struct {
+	ServerAddr string
 }
 
 type Client struct {
 	ClientConfig
-	server *Server
+	msc pb.MergeServiceClient
 }
 
 func NewClient(server *Server) *Client {
-	return &Client{ClientConfig{}, server}
+	cc := ClientConfig{ServerAddr: "localhost:3000"}
+	conn, err := grpc.Dial(cc.ServerAddr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	msc := pb.NewMergeServiceClient(conn)
+	return &Client{cc, msc}
 }
 
-// TODO: This should send avro data over the wire
-func (c Client) sendPartial(p Payload) {
-	log.Println("Sending Partial:", p)
-	c.server.acceptPartial(p)
-}
-
-func (c Client) sendImpression(p Payload) {
-	log.Println("Sending Impression:", p)
-	c.server.acceptImpression(p)
-}
-
-func (c Client) trackPayload(traces []Trace, data dumpable) Trace {
+func (c Client) TrackPayload(traces []*pb.Trace, data dumpable) pb.Trace {
 	id := mkID()
-	// TODO: maybe change to queue
-	go c.sendPartial(Payload{id: id, partial: PartialEvent{traces: traces, data: data}})
-	return Trace{id: id, traces: traces}
+	trace := pb.Trace{id, traces}
+	go c.msc.PartialEvent(nil, &pb.EventRequest{
+		[]*pb.DataWrapper{
+			&pb.DataWrapper{
+				&trace,
+				&pb.DataMeta{"myschema", "myversion"},
+				[]byte("mydata"),
+			},
+		},
+	})
+	return trace
 }
 
-func (c Client) trackImpression(traces []Trace, data dumpable) Trace {
+func (c Client) TrackImpression(traces []*pb.Trace, data dumpable) pb.Trace {
 	id := mkID()
-	// TODO: maybe change to queue
-	go c.sendImpression(Payload{id: id, partial: PartialEvent{traces: traces, data: data}})
-	return Trace{id: id, traces: traces}
+	trace := pb.Trace{id, traces}
+	go c.msc.CompleteEvent(nil, &pb.EventRequest{
+		[]*pb.DataWrapper{
+			&pb.DataWrapper{
+				&trace,
+				&pb.DataMeta{"myschema", "myversion"},
+				[]byte("mydata"),
+			},
+		},
+	})
+	return trace
 }
 
 // TODO: Need to prove things about collisions etc
