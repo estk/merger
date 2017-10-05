@@ -16,39 +16,7 @@ import (
 )
 
 // Test main
-func main() {
-	// s := NewServer(nil)
-	// c := NewClient(s)
-
-	// Test 1
-	// t1 := c.trackPayload([]Trace{}, "partial1")
-	// t2 := c.trackPayload([]Trace{t1}, "partial2")
-	// c.trackImpression([]Trace{t2}, "impression")
-	// time.Sleep(time.Second)
-
-	// Test 2
-	// t1a := c.trackPayload([]Trace{}, "partial1a")
-	// t1b := c.trackPayload([]Trace{}, "partial1b")
-	// t2 := c.trackPayload([]Trace{t1a, t1b}, "partial2")
-	// c.trackImpression([]Trace{t2}, "impression")
-	// time.Sleep(time.Second)
-}
-
-// ======
-// Shared
-// ======
-
-type dumpable = []byte
-
-type PartialEvent struct {
-	traces []*pb.Trace
-	data   dumpable
-}
-
-type Payload struct {
-	id      string
-	partial PartialEvent
-}
+func main() {}
 
 // ======
 // SERVER
@@ -64,12 +32,15 @@ type Server struct {
 	completeEvents []CompleteEvent
 }
 
+type partialMap = map[string]partialEventEntry
+
 type partialEventEntry struct {
-	ts      time.Time
-	partial PartialEvent
+	ts     time.Time
+	traces []*pb.Trace
+	data   dumpable
 }
 
-type partialMap = map[string]partialEventEntry
+type dumpable = []byte
 
 func NewServer(sc *ServerConfig) *Server {
 	if sc == nil {
@@ -121,8 +92,9 @@ func (s *Server) CompleteEvents(ctx context.Context, er *pb.EventRequest) (*pb.E
 
 func (s *Server) processPartial(trace pb.Trace, data []byte) {
 	s.eventBuffer[trace.Id] = partialEventEntry{
-		ts:      time.Now(),
-		partial: PartialEvent{trace.Traces, data},
+		time.Now(),
+		trace.Traces,
+		data,
 	}
 	log.Println("Stored Partial:", trace)
 }
@@ -143,8 +115,8 @@ func (s *Server) collectDatas(traces []*pb.Trace) []dumpable {
 	datas := []dumpable{}
 	for _, t := range traces {
 		partialEntry := s.eventBuffer[t.Id]
-		cDatas := s.collectDatas(partialEntry.partial.traces)
-		data := s.eventBuffer[t.Id].partial.data
+		cDatas := s.collectDatas(partialEntry.traces)
+		data := s.eventBuffer[t.Id].data
 
 		datas = append(datas, cDatas...)
 		datas = append(datas, data)
