@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package merger;
+
+service MergeService {
+    rpc PartialEvent (EventRequest) returns (Empty) {}
+    rpc CompleteEvent (EventRequest) returns (Empty) {}
+}
+
+message EventRequest {
+    repeated DataWrapper payload = 1;
+}
+
+message DataWrapper {
+    Trace trace = 1;
+    DataMeta meta = 3;
+    bytes data = 4;
+}
+
+message Trace {
+    string id = 1;
+    repeated Trace traces = 2;
+}
+
+message DataMeta {
+    string schema = 1;
+    string version = 2;
+}
+
+message Empty {}

@@ -1,12 +1,17 @@
 package main
 
 // Todo:
-// - Use Avro to pass data.
+// - Use Reggy to load avro schemas.
+// - Use avro to pass data.
 
 import (
 	"log"
 	"os/exec"
 	"time"
+
+	pb "merger/mergerpb"
+
+	context "golang.org/x/net/context"
 )
 
 // Test main
@@ -32,7 +37,7 @@ func main() {
 // Shared
 // ======
 
-type dumpable = string
+type dumpable = []byte
 
 type Trace struct {
 	id     string
@@ -40,7 +45,7 @@ type Trace struct {
 }
 
 type PartialEvent struct {
-	traces []Trace
+	traces []*pb.Trace
 	data   dumpable
 }
 
@@ -100,16 +105,30 @@ func cleanBuffer(b partialMap) {
 }
 
 type completeEvent struct {
-	trace Trace
+	trace pb.Trace
 	datas []dumpable
 }
 
-func (s *Server) acceptPartial(payload Payload) {
-	s.eventBuffer[payload.id] = partialEventEntry{
-		ts:      time.Now(),
-		partial: payload.partial,
+func (s *Server) PartialEvents(ctx context.Context, er *pb.EventRequest) (*pb.Empty, error) {
+	for _, dw := range er.Payload {
+		s.acceptPartial(*dw.Trace, dw.Data)
 	}
-	log.Println("Stored Partial:", payload)
+	return &pb.Empty{}, nil
+}
+
+func (s *Server) CompleteEvents(ctx context.Context, er *pb.EventRequest) (*pb.Empty, error) {
+	for _, dw := range er.Payload {
+		s.acceptPartial(*dw.Trace, dw.Data)
+	}
+	return &pb.Empty{}, nil
+}
+
+func (s *Server) acceptPartial(trace pb.Trace, data []byte) {
+	s.eventBuffer[trace.Id] = partialEventEntry{
+		ts:      time.Now(),
+		partial: PartialEvent{trace.Traces, data},
+	}
+	log.Println("Stored Partial:", trace)
 }
 
 func (s *Server) acceptImpression(p Payload) {
@@ -121,21 +140,21 @@ func (s *Server) acceptImpression(p Payload) {
 
 func (s *Server) completePartials(payload Payload) completeEvent {
 	traces := payload.partial.traces
-	trace := Trace{payload.id, traces}
+	trace := pb.Trace{payload.id, traces}
 	datas := s.collectDatas(traces)
 	datas = append(datas, payload.partial.data)
 	return completeEvent{trace, datas}
 }
-func (s *Server) collectDatas(traces []Trace) []dumpable {
+func (s *Server) collectDatas(traces []*pb.Trace) []dumpable {
 	datas := []dumpable{}
 	for _, t := range traces {
-		partialEntry := s.eventBuffer[t.id]
+		partialEntry := s.eventBuffer[t.Id]
 		cDatas := s.collectDatas(partialEntry.partial.traces)
-		data := s.eventBuffer[t.id].partial.data
+		data := s.eventBuffer[t.Id].partial.data
 
 		datas = append(datas, cDatas...)
 		datas = append(datas, data)
-		delete(s.eventBuffer, t.id)
+		delete(s.eventBuffer, t.Id)
 	}
 	return datas
 }
