@@ -5,7 +5,7 @@ import (
 	"log"
 	"os/exec"
 
-	pb "merger/pb"
+	pb "github.com/estk/merger/pb"
 
 	"google.golang.org/grpc"
 )

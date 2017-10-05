@@ -14,7 +14,7 @@ It has these top-level messages:
 	DataMeta
 	Empty
 */
-package merger
+package pb
 
 import proto "github.com/golang/protobuf/proto"
 import fmt "fmt"

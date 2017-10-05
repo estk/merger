@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
-	pb "merger/pb"
 	"time"
+
+	pb "github.com/estk/merger/pb"
 )
 
 func main() {
