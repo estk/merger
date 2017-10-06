@@ -23,8 +23,8 @@ type ServerConfig struct {
 
 type Server struct {
 	ServerConfig
-	eventBuffer    partialMap
-	completeEvents []CompleteEvent
+	eventBuffer     partialMap
+	CompletedEvents []CompleteEvent
 }
 
 type partialMap = map[string]partialEventEntry
@@ -40,7 +40,7 @@ type dumpable = []byte
 func New(sc *ServerConfig) *Server {
 	if sc == nil {
 		sc = &ServerConfig{
-			ServerAddr: "localhost:3000",
+			ServerAddr: ":3000",
 			TTL:        30 * time.Second,
 		}
 	}
@@ -57,9 +57,10 @@ func New(sc *ServerConfig) *Server {
 	}
 	grpcServer := grpc.NewServer()
 	pb.RegisterMergeServiceServer(grpcServer, s)
-	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
-	}
+	go grpcServer.Serve(lis)
+	// if err := grpcServer.Serve(lis); err != nil {
+	// 	log.Fatalf("failed to serve: %v", err)
+	// }
 
 	go func() {
 		for _ = range time.Tick(s.TTL) {
@@ -80,7 +81,7 @@ func cleanBuffer(b partialMap) {
 
 type CompleteEvent struct {
 	trace pb.Trace
-	datas []dumpable
+	Datas []dumpable
 }
 
 func (s *Server) PartialEvents(ctx context.Context, er *pb.EventRequest) (*pb.Empty, error) {
@@ -108,8 +109,8 @@ func (s *Server) processPartial(trace pb.Trace, data []byte) {
 
 func (s *Server) processComplete(trace pb.Trace, data []byte) {
 	event := s.completePartials(trace, data)
-	s.completeEvents = append(s.completeEvents, event)
-	log.Println("Completed Impression: ", trace)
+	s.CompletedEvents = append(s.CompletedEvents, event)
+	log.Println("Completed Impression: ", event)
 }
 
 func (s *Server) completePartials(trace pb.Trace, data []byte) CompleteEvent {

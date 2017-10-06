@@ -1,28 +1,35 @@
 package main
 
 import (
-	"log"
 	"testing"
+	"time"
 
 	client "github.com/estk/merger/client"
 	pb "github.com/estk/merger/pb"
 	server "github.com/estk/merger/server"
 )
 
-func TestSum(t *testing.T) {
-	t.Errorf("Sum was incorrect, got: %d, want: %d.", 9, 10)
-}
-
 func TestToComplete(t *testing.T) {
-	t.Errorf("run")
-	server.New(nil)
-	log.Println("server")
-	client := client.New()
-	log.Println("client")
+	s := server.New(nil)
 
-	trace1 := client.TrackPayload([]*pb.Trace{}, []byte("hello!"))
-	log.Println("1")
-	trace2 := client.TrackPayload([]*pb.Trace{&trace1}, []byte("bon jour"))
-	log.Println("2")
-	client.TrackImpression([]*pb.Trace{&trace2}, []byte("ni hau"))
+	time.Sleep(2 * time.Second)
+	client := client.New()
+
+	trace1 := client.TrackPayload([]*pb.Trace{}, []byte("data1"))
+	trace2 := client.TrackPayload([]*pb.Trace{&trace1}, []byte("data2"))
+	client.TrackImpression([]*pb.Trace{&trace2}, []byte("data3"))
+	time.Sleep(1 * time.Second)
+
+	if len(s.CompletedEvents) == 0 {
+		t.Error("No completed events")
+	}
+
+	for _, e := range s.CompletedEvents {
+		for _, d := range e.Datas {
+			s := string(d)
+			if !(s != "data1" || s != "data2" || s != "data3") {
+				t.Errorf("Unexpected data %s", s)
+			}
+		}
+	}
 }

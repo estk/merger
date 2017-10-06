@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os/exec"
@@ -24,7 +25,7 @@ type Client struct {
 }
 
 func New() *Client {
-	cc := ClientConfig{ServerAddr: "localhost:3000"}
+	cc := ClientConfig{ServerAddr: "127.0.0.1:3000"}
 	conn, err := grpc.Dial(cc.ServerAddr, grpc.WithInsecure())
 	if err != nil {
 		log.Fatal(err)
@@ -36,12 +37,12 @@ func New() *Client {
 func (c Client) TrackPayload(traces []*pb.Trace, data []byte) pb.Trace {
 	id := mkID()
 	trace := pb.Trace{id, traces}
-	go c.msc.PartialEvents(nil, &pb.EventRequest{
+	go c.msc.PartialEvents(context.Background(), &pb.EventRequest{
 		[]*pb.DataWrapper{
 			&pb.DataWrapper{
 				&trace,
 				&pb.DataMeta{"myschema", "myversion"},
-				[]byte("mydata"),
+				data,
 			},
 		},
 	})
@@ -51,12 +52,12 @@ func (c Client) TrackPayload(traces []*pb.Trace, data []byte) pb.Trace {
 func (c Client) TrackImpression(traces []*pb.Trace, data []byte) pb.Trace {
 	id := mkID()
 	trace := pb.Trace{id, traces}
-	go c.msc.CompleteEvents(nil, &pb.EventRequest{
+	go c.msc.CompleteEvents(context.Background(), &pb.EventRequest{
 		[]*pb.DataWrapper{
 			&pb.DataWrapper{
 				&trace,
 				&pb.DataMeta{"myschema", "myversion"},
-				[]byte("mydata"),
+				data,
 			},
 		},
 	})
