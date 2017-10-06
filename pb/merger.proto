@@ -3,8 +3,8 @@ syntax = "proto3";
 package merger;
 
 service MergeService {
-    rpc PartialEvent (EventRequest) returns (Empty) {}
-    rpc CompleteEvent (EventRequest) returns (Empty) {}
+    rpc PartialEvents (EventRequest) returns (Empty) {}
+    rpc CompleteEvents (EventRequest) returns (Empty) {}
 }
 
 message EventRequest {

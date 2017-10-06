@@ -1,12 +1,15 @@
-package main
+package server
 
 import (
-	"context"
 	"fmt"
 	"log"
+	"net"
 	"time"
 
+	"golang.org/x/net/context"
+
 	pb "github.com/estk/merger/pb"
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -14,7 +17,8 @@ func main() {
 }
 
 type ServerConfig struct {
-	TTL time.Duration
+	ServerAddr string
+	TTL        time.Duration
 }
 
 type Server struct {
@@ -33,16 +37,28 @@ type partialEventEntry struct {
 
 type dumpable = []byte
 
-func NewServer(sc *ServerConfig) *Server {
+func New(sc *ServerConfig) *Server {
 	if sc == nil {
 		sc = &ServerConfig{
-			TTL: 30 * time.Second,
+			ServerAddr: "localhost:3000",
+			TTL:        30 * time.Second,
 		}
 	}
+
+	lis, err := net.Listen("tcp", sc.ServerAddr)
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+
 	s := &Server{
 		*sc,
 		make(partialMap),
 		[]CompleteEvent{},
+	}
+	grpcServer := grpc.NewServer()
+	pb.RegisterMergeServiceServer(grpcServer, s)
+	if err := grpcServer.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
 	}
 
 	go func() {

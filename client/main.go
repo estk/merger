@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"fmt"
@@ -23,9 +23,9 @@ type Client struct {
 	msc pb.MergeServiceClient
 }
 
-func NewClient() *Client {
+func New() *Client {
 	cc := ClientConfig{ServerAddr: "localhost:3000"}
-	conn, err := grpc.Dial(cc.ServerAddr)
+	conn, err := grpc.Dial(cc.ServerAddr, grpc.WithInsecure())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func NewClient() *Client {
 func (c Client) TrackPayload(traces []*pb.Trace, data []byte) pb.Trace {
 	id := mkID()
 	trace := pb.Trace{id, traces}
-	go c.msc.PartialEvent(nil, &pb.EventRequest{
+	go c.msc.PartialEvents(nil, &pb.EventRequest{
 		[]*pb.DataWrapper{
 			&pb.DataWrapper{
 				&trace,
@@ -51,7 +51,7 @@ func (c Client) TrackPayload(traces []*pb.Trace, data []byte) pb.Trace {
 func (c Client) TrackImpression(traces []*pb.Trace, data []byte) pb.Trace {
 	id := mkID()
 	trace := pb.Trace{id, traces}
-	go c.msc.CompleteEvent(nil, &pb.EventRequest{
+	go c.msc.CompleteEvents(nil, &pb.EventRequest{
 		[]*pb.DataWrapper{
 			&pb.DataWrapper{
 				&trace,
