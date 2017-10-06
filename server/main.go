@@ -2,19 +2,18 @@ package server
 
 import (
 	"fmt"
-	"log"
+	stdlog "log"
 	"net"
+	"os"
 	"time"
 
 	"golang.org/x/net/context"
 
 	pb "github.com/estk/merger/pb"
+	"github.com/rs/zerolog"
+	log "github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 )
-
-func main() {
-	fmt.Println("vim-go")
-}
 
 type ServerConfig struct {
 	ServerAddr string
@@ -25,6 +24,7 @@ type Server struct {
 	ServerConfig
 	eventBuffer     partialMap
 	CompletedEvents []CompleteEvent
+	grpcServer      *grpc.Server
 }
 
 type partialMap = map[string]partialEventEntry
@@ -37,6 +37,16 @@ type partialEventEntry struct {
 
 type dumpable = []byte
 
+func init() {
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	log := zerolog.New(os.Stdout).With().
+		Str("module", "merger-server").
+		Logger()
+
+	stdlog.SetFlags(0)
+	stdlog.SetOutput(log)
+}
+
 func New(sc *ServerConfig) *Server {
 	if sc == nil {
 		sc = &ServerConfig{
@@ -47,20 +57,19 @@ func New(sc *ServerConfig) *Server {
 
 	lis, err := net.Listen("tcp", sc.ServerAddr)
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		fmt.Errorf("failed to listen: %v", err)
 	}
 
+	grpcServer := grpc.NewServer()
 	s := &Server{
 		*sc,
 		make(partialMap),
 		[]CompleteEvent{},
+		grpcServer,
 	}
-	grpcServer := grpc.NewServer()
 	pb.RegisterMergeServiceServer(grpcServer, s)
+
 	go grpcServer.Serve(lis)
-	// if err := grpcServer.Serve(lis); err != nil {
-	// 	log.Fatalf("failed to serve: %v", err)
-	// }
 
 	go func() {
 		for _ = range time.Tick(s.TTL) {
@@ -84,6 +93,10 @@ type CompleteEvent struct {
 	Datas []dumpable
 }
 
+func (s *Server) Stop() {
+	s.grpcServer.Stop()
+}
+
 func (s *Server) PartialEvents(ctx context.Context, er *pb.EventRequest) (*pb.Empty, error) {
 	for _, dw := range er.Payload {
 		s.processPartial(*dw.Trace, dw.Data)
@@ -104,13 +117,13 @@ func (s *Server) processPartial(trace pb.Trace, data []byte) {
 		trace.Traces,
 		data,
 	}
-	log.Println("Stored Partial:", trace)
+	log.Debug().Msgf("Stored Partial: %s", trace)
 }
 
 func (s *Server) processComplete(trace pb.Trace, data []byte) {
 	event := s.completePartials(trace, data)
 	s.CompletedEvents = append(s.CompletedEvents, event)
-	log.Println("Completed Impression: ", event)
+	log.Debug().Msgf("Completed Impression: %s", event)
 }
 
 func (s *Server) completePartials(trace pb.Trace, data []byte) CompleteEvent {

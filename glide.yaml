@@ -1,0 +1,14 @@
+package: github.com/estk/merger
+import:
+- package: github.com/golang/protobuf
+  subpackages:
+  - proto
+- package: golang.org/x/net
+  subpackages:
+  - context
+- package: google.golang.org/grpc
+  version: ^1.6.0
+- package: github.com/rs/zerolog
+  version: ^1.3.0
+  subpackages:
+  - log

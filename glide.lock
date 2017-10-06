@@ -1,0 +1,18 @@
+hash: fbacc3e135ecb2e5de1076b5b93f9457ce23aadfb5731be237d743c0317c2b73
+updated: 2017-10-06T10:43:51.051068344-07:00
+imports:
+- name: github.com/golang/protobuf
+  version: 130e6b02ab059e7b717a096f397c5b60111cae74
+  subpackages:
+  - proto
+- name: github.com/rs/zerolog
+  version: 3ac71fc58dbd43122668a912b755b0979ba9ce1f
+  subpackages:
+  - log
+- name: golang.org/x/net
+  version: a04bdaca5b32abe1c069418fb7088ae607de5bd0
+  subpackages:
+  - context
+- name: google.golang.org/grpc
+  version: f92cdcd7dcdc69e81b2d7b338479a19a8723cfa3
+testImports: []

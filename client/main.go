@@ -3,16 +3,23 @@ package client
 import (
 	"context"
 	"fmt"
-	"log"
+	stdlog "log"
+	"os"
 	"os/exec"
 
 	pb "github.com/estk/merger/pb"
+	"github.com/rs/zerolog"
 
 	"google.golang.org/grpc"
 )
 
-func main() {
-	fmt.Println("vim-go")
+func init() {
+	log := zerolog.New(os.Stdout).With().
+		Str("module", "merger-client").
+		Logger()
+
+	stdlog.SetFlags(0)
+	stdlog.SetOutput(log)
 }
 
 type ClientConfig struct {
@@ -21,23 +28,28 @@ type ClientConfig struct {
 
 type Client struct {
 	ClientConfig
-	msc pb.MergeServiceClient
+	msc  pb.MergeServiceClient
+	conn *grpc.ClientConn
 }
 
 func New() *Client {
 	cc := ClientConfig{ServerAddr: "127.0.0.1:3000"}
 	conn, err := grpc.Dial(cc.ServerAddr, grpc.WithInsecure())
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
 	}
 	msc := pb.NewMergeServiceClient(conn)
-	return &Client{cc, msc}
+	return &Client{cc, msc, conn}
 }
 
-func (c Client) TrackPayload(traces []*pb.Trace, data []byte) pb.Trace {
-	id := mkID()
+func (c *Client) Close() {
+	c.conn.Close()
+}
+
+func (c Client) TrackPayload(traces []*pb.Trace, data []byte) (pb.Trace, error) {
+	id := c.mkID()
 	trace := pb.Trace{id, traces}
-	go c.msc.PartialEvents(context.Background(), &pb.EventRequest{
+	_, err := c.msc.PartialEvents(context.Background(), &pb.EventRequest{
 		[]*pb.DataWrapper{
 			&pb.DataWrapper{
 				&trace,
@@ -46,13 +58,13 @@ func (c Client) TrackPayload(traces []*pb.Trace, data []byte) pb.Trace {
 			},
 		},
 	})
-	return trace
+	return trace, err
 }
 
-func (c Client) TrackImpression(traces []*pb.Trace, data []byte) pb.Trace {
-	id := mkID()
+func (c Client) TrackImpression(traces []*pb.Trace, data []byte) (pb.Trace, error) {
+	id := c.mkID()
 	trace := pb.Trace{id, traces}
-	go c.msc.CompleteEvents(context.Background(), &pb.EventRequest{
+	_, err := c.msc.CompleteEvents(context.Background(), &pb.EventRequest{
 		[]*pb.DataWrapper{
 			&pb.DataWrapper{
 				&trace,
@@ -61,14 +73,14 @@ func (c Client) TrackImpression(traces []*pb.Trace, data []byte) pb.Trace {
 			},
 		},
 	})
-	return trace
+	return trace, err
 }
 
 // TODO: Need to prove things about collisions etc
-func mkID() string {
+func (c Client) mkID() string {
 	out, err := exec.Command("uuidgen").Output()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
 	}
 	return string(out)
 }
